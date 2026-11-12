@@ -83,3 +83,85 @@ def estimate_chords(chroma: Any, sr: int, hop: int) -> list[dict[str,Any]]:
             output[-1]["end_seconds"]=end_s; output[-1]["confidence"]=round((output[-1]["confidence"]+confidence)/2,3)
         else: output.append({"start_seconds":start_s,"end_seconds":end_s,"chord":label,"confidence":confidence,"review_status":"unreviewed"})
     return output
+
+
+# YouTube source inspection is metadata-only. The official oEmbed endpoint does
+# not expose captions or raw audio; those require separate permissions/sources.
+from urllib.parse import urlparse, parse_qs
+from urllib.request import Request, urlopen
+import json
+import re
+from fastapi import Query
+
+def parse_youtube_id(value: str) -> str | None:
+    parsed = urlparse(value)
+    host = (parsed.hostname or "").lower().removeprefix("www.")
+    if host in {"youtu.be"}:
+        candidate = parsed.path.strip("/").split("/")[0]
+    elif host in {"youtube.com", "m.youtube.com", "music.youtube.com"}:
+        candidate = parse_qs(parsed.query).get("v", [None])[0]
+        if not candidate:
+            match = re.match(r"^/(?:shorts|embed|live)/([^/?]+)", parsed.path)
+            candidate = match.group(1) if match else None
+    else:
+        return None
+    return candidate if candidate and re.fullmatch(r"[A-Za-z0-9_-]{11}", candidate) else None
+
+@app.get("/v1/sources/youtube/inspect")
+async def inspect_youtube(url: str = Query(..., min_length=8, max_length=2048)) -> dict[str, Any]:
+    video_id = parse_youtube_id(url)
+    if not video_id:
+        raise HTTPException(status_code=400, detail="Enter a valid YouTube video URL.")
+    endpoint = f"https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v={video_id}&format=json"
+    try:
+        request = Request(endpoint, headers={"User-Agent": "WorshipCompanion/1.0"})
+        def fetch_metadata() -> dict[str, Any]:
+            with urlopen(request, timeout=8) as response:
+                return json.loads(response.read(1024 * 256).decode("utf-8"))
+        metadata = await __import__("asyncio").to_thread(fetch_metadata)
+        return {
+            "video_id": video_id,
+            "title": metadata.get("title"),
+            "author_name": metadata.get("author_name"),
+            "thumbnail_url": metadata.get("thumbnail_url"),
+            "embed_url": f"https://www.youtube-nocookie.com/embed/{video_id}",
+            "source_type": "youtube",
+            "caption_status": "owner_oauth_required",
+            "caption_message": "YouTube metadata is available. Caption retrieval requires an authenticated channel owner/editor account with permission to access that video's caption track.",
+            "audio_status": "authorised_audio_required",
+            "audio_message": "A YouTube URL does not provide raw audio for analysis. Upload an audio file you are authorised to process."
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail="Could not retrieve public YouTube metadata. The video may be private, unavailable, or block embedding.") from exc
+
+@app.post("/v1/audio/transcribe")
+async def transcribe_audio(file: UploadFile = File(...)) -> dict[str, Any]:
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in ALLOWED:
+        raise HTTPException(status_code=415, detail="Unsupported audio extension.")
+    data = await file.read(MAX_BYTES + 1)
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty audio upload.")
+    if len(data) > MAX_BYTES:
+        raise HTTPException(status_code=413, detail="File exceeds 50 MB prototype limit.")
+    path = None
+    try:
+        try:
+            from faster_whisper import WhisperModel
+        except ImportError as exc:
+            raise HTTPException(status_code=503, detail="Lyrics transcription is not configured on this server yet. Install backend/requirements-transcription.txt and deploy the backend again.") from exc
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp.write(data)
+            path = tmp.name
+        model_name = os.getenv("WHISPER_MODEL", "small")
+        model = WhisperModel(model_name, device=os.getenv("WHISPER_DEVICE", "cpu"), compute_type=os.getenv("WHISPER_COMPUTE_TYPE", "int8"))
+        segments, info = model.transcribe(path, vad_filter=True, word_timestamps=False)
+        output = [{"start_seconds": round(s.start, 2), "end_seconds": round(s.end, 2), "text": s.text.strip()} for s in segments]
+        return {"status": "transcribed", "language": info.language, "language_probability": round(float(info.language_probability), 3), "segments": output, "transcript": "\\n".join(s["text"] for s in output), "limitations": ["Speech recognition may mishear sung lyrics, especially melisma, backing vocals, Tamil-English mixing, and repeated phrases.", "Review and correct the transcript before publishing."]}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Transcription failed: {type(exc).__name__}") from exc
+    finally:
+        if path and os.path.exists(path):
+            os.remove(path)
