@@ -115,7 +115,7 @@ export default function Home() {
     <section className="main-area">
       <header className="topbar"><div><span className="crumb">MUSIC WORKSPACE</span><span className="crumb-sep">/</span><strong>{tab === "shared" ? "Church songbook" : "My songbook"}</strong></div><span className="private-chip">● CHURCH EDITION · PREVIEW</span></header>
       <div className="content">
-        <section className="welcome-row"><div><p className="eyebrow">THE MUSIC TEAM'S DIGITAL SONGBOOK</p><h1>Make music together.</h1><p className="subhead">Learn the song. Understand the chords. Play with confidence.</p></div><div className="welcome-note"><span>♫</span><small>LEARN · PRACTISE · SERVE</small></div></section>
+        <section className="welcome-row"><div><p className="eyebrow">THE MUSIC TEAM&apos;S DIGITAL SONGBOOK</p><h1>Make music together.</h1><p className="subhead">Learn the song. Understand the chords. Play with confidence.</p></div><div className="welcome-note"><span>♫</span><small>LEARN · PRACTISE · SERVE</small></div></section>
         <section className="import-card">
           <div className="import-heading"><div><span className="step">01</span><div><h2>Bring a song into the lab</h2><p>Paste a link for reference, or select audio you have permission to use.</p></div></div><span className="soft-tag">SONG IMPORT</span></div>
           <div className="import-grid">
