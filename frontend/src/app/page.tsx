@@ -6,11 +6,24 @@ type ChordEvent = { start_seconds: number; end_seconds: number; chord: string; c
 type AnalysisResult = { duration_seconds: number; key: { name: string; mode: string; confidence: number }; tempo_bpm: number; chord_events: ChordEvent[]; limitations: string[] };
 
 const NOTES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
-const GUITAR_FINGERINGS: Record<string,number[]> = {C:[-1,3,2,0,1,0],D:[-1,-1,0,2,3,2],E:[0,2,2,1,0,0],G:[3,2,0,0,0,3],A:[-1,0,2,2,2,0],Am:[-1,0,2,2,1,0],Em:[0,2,2,0,0,0],F:[1,3,3,2,1,1]};
-const UKULELE_FINGERINGS: Record<string,number[]> = {C:[0,0,0,3],D:[2,2,2,0],E:[4,4,4,2],G:[0,2,3,2],A:[2,1,0,0],Am:[2,0,0,0],Em:[0,4,3,2],F:[2,0,1,0]};
+const GUITAR_FINGERINGS: Record<string,number[]> = {
+  C:[-1,3,2,0,1,0],Cm:[-1,3,5,5,4,3],C#:[-1,4,6,6,6,4],C#m:[-1,4,6,6,5,4],
+  D:[-1,-1,0,2,3,2],Dm:[-1,-1,0,2,3,1],D#:[-1,6,8,8,8,6],D#m:[-1,6,8,8,7,6],
+  E:[0,2,2,1,0,0],Em:[0,2,2,0,0,0],F:[1,3,3,2,1,1],Fm:[1,3,3,1,1,1],
+  F#:[2,4,4,3,2,2],F#m:[2,4,4,2,2,2],G:[3,2,0,0,0,3],Gm:[3,5,5,3,3,3],
+  G#:[4,6,6,5,4,4],G#m:[4,6,6,4,4,4],A:[-1,0,2,2,2,0],Am:[-1,0,2,2,1,0],
+  A#:[-1,1,3,3,3,1],A#m:[-1,1,3,3,2,1],B:[-1,2,4,4,4,2],Bm:[-1,2,4,4,3,2]
+};
+const UKULELE_FINGERINGS: Record<string,number[]> = {
+  C:[0,0,0,3],Cm:[0,3,3,3],C#:[1,1,1,4],C#m:[1,1,0,4],D:[2,2,2,0],Dm:[2,2,1,0],
+  D#:[3,3,3,1],D#m:[3,3,2,1],E:[4,4,4,2],Em:[0,4,3,2],F:[2,0,1,0],Fm:[1,0,1,3],
+  F#:[3,1,2,1],F#m:[2,1,2,0],G:[0,2,3,2],Gm:[0,2,3,1],G#:[1,3,4,3],G#m:[1,3,4,2],
+  A:[2,1,0,0],Am:[2,0,0,0],A#:[3,2,1,1],A#m:[3,1,1,1],B:[4,3,2,2],Bm:[4,2,2,2]
+};
 function ChordDiagram({ chord, instrument }: { chord: string; instrument: string }) {
   const root = chord.match(/^[A-G](?:#|b)?/)?.[0] || chord;
-  const fingers = instrument === "Ukulele" ? UKULELE_FINGERINGS[root] : GUITAR_FINGERINGS[root];
+  const fingeringMap = instrument === "Ukulele" ? UKULELE_FINGERINGS : GUITAR_FINGERINGS;
+  const fingers = fingeringMap[chord] || fingeringMap[root];
   if (instrument === "Keyboard") {
     const notes: Record<string,string[]> = {C:["C","E","G"],D:["D","F#","A"],E:["E","G#","B"],G:["G","B","D"],A:["A","C#","E"],Am:["A","C","E"],Em:["E","G","B"],F:["F","A","C"]};
     return <div className="keyboard-diagram">{Array.from({length:14},(_,i)=>{const note=["C","D","E","F","G","A","B"][i%7]; const active=(notes[root]||[]).includes(note); return <span className={active?"key active":"key"} key={i}>{active?note:""}</span>;})}</div>;
@@ -18,10 +31,13 @@ function ChordDiagram({ chord, instrument }: { chord: string; instrument: string
   if (instrument === "Bass") return <div className="bass-diagram"><b>{root}</b><span>Root note · {root} scale position</span></div>;
   if (!fingers) return <div className="diagram-empty">Diagram coming soon</div>;
   const strings = fingers.length, frets = 4, width = strings === 4 ? 88 : 112;
+  const positiveFrets = fingers.filter(f => f > 0);
+  const firstFret = positiveFrets.length && Math.min(...positiveFrets) > 1 ? Math.min(...positiveFrets) : 1;
   return <svg className="fret-diagram" viewBox={`0 0 ${width} 112`} role="img" aria-label={`${chord} ${instrument} chord diagram`}>
     {Array.from({length:strings},(_,i)=><line key={"s"+i} x1={12+i*(width-24)/(strings-1)} y1="16" x2={12+i*(width-24)/(strings-1)} y2="100" stroke="#8390a0" strokeWidth="1.2"/>)}
-    {Array.from({length:frets+1},(_,i)=><line key={"f"+i} x1="12" y1={16+i*21} x2={width-12} y2={16+i*21} stroke="#8390a0" strokeWidth={i===0?2.5:1}/>)}
-    {fingers.map((f,i)=>f<0?<text key={i} x={12+i*(width-24)/(strings-1)} y="10" textAnchor="middle" fill="#f0a0a0" fontSize="10">×</text>:f===0?<text key={i} x={12+i*(width-24)/(strings-1)} y="10" textAnchor="middle" fill="#c5f477" fontSize="10">○</text>:<circle key={i} cx={12+i*(width-24)/(strings-1)} cy={16+(f-.5)*21} r="5.5" fill="#c5f477"/>)}
+    {Array.from({length:frets+1},(_,i)=><line key={"f"+i} x1="12" y1={16+i*21} x2={width-12} y2={16+i*21} stroke="#8390a0" strokeWidth={i===0 && firstFret===1?2.5:1}/>)}
+    {firstFret>1 && <text x="2" y="29" fill="#c5f477" fontSize="8">{firstFret}fr</text>}
+    {fingers.map((f,i)=>f<0?<text key={i} x={12+i*(width-24)/(strings-1)} y="10" textAnchor="middle" fill="#f0a0a0" fontSize="10">×</text>:f===0?<text key={i} x={12+i*(width-24)/(strings-1)} y="10" textAnchor="middle" fill="#c5f477" fontSize="10">○</text>:<circle key={i} cx={12+i*(width-24)/(strings-1)} cy={16+(f-firstFret+.5)*21} r="5.5" fill="#c5f477"/>)}
   </svg>;
 }
 const SONGS = [
