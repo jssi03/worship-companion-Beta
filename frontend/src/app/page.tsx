@@ -41,7 +41,7 @@ type DbFile = {chords:Record<string,DbEntry[]>};
 const GUITAR_DATA = guitarDb as DbFile;
 const UKULELE_DATA = ukuleleDb as DbFile;
 const ENHARMONIC:Record<string,string> = {"C#":"Db","D#":"Eb","F#":"Gb","G#":"Ab","A#":"Bb"};
-const QUALITY_SUFFIX:Record<string,string> = {"":"major",m:"minor",min:"minor",minor:"minor",dim:"dim",dim7:"dim7",aug:"aug",sus:"sus",sus2:"sus2",sus4:"sus4","7":"7",maj7:"maj7",m7:"m7",add9:"add9","6":"6","9":"9",m6:"m6",m9:"m9",m7b5:"m7b5", "6":"6", "9":"9", m6:"m6", m9:"m9", "5":"5", "sus":"sus", "7sus4":"7sus4"};
+const QUALITY_SUFFIX:Record<string,string> = {"":"major",m:"minor",min:"minor",minor:"minor",dim:"dim",dim7:"dim7",aug:"aug",sus:"sus",sus2:"sus2",sus4:"sus4","7":"7",maj7:"maj7",m7:"m7",add9:"add9","6":"6","9":"9",m6:"m6",m9:"m9",m7b5:"m7b5","5":"5","7sus4":"7sus4"};
 function findVoicings(chord:string,instrument:string):DbPosition[] {
   const parsed=parseChord(chord); if(!parsed) return [];
   const data=instrument==="Ukulele"?UKULELE_DATA:GUITAR_DATA;
