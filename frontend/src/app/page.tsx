@@ -6,29 +6,43 @@ type ChordEvent = { start_seconds: number; end_seconds: number; chord: string; c
 type AnalysisResult = { duration_seconds: number; key: { name: string; mode: string; confidence: number }; tempo_bpm: number; chord_events: ChordEvent[]; limitations: string[] };
 
 const NOTES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
-const GUITAR_FINGERINGS: Record<string,number[]> = {
-  C:[-1,3,2,0,1,0],Cm:[-1,3,5,5,4,3],C#:[-1,4,6,6,6,4],C#m:[-1,4,6,6,5,4],
-  D:[-1,-1,0,2,3,2],Dm:[-1,-1,0,2,3,1],D#:[-1,6,8,8,8,6],D#m:[-1,6,8,8,7,6],
-  E:[0,2,2,1,0,0],Em:[0,2,2,0,0,0],F:[1,3,3,2,1,1],Fm:[1,3,3,1,1,1],
-  F#:[2,4,4,3,2,2],F#m:[2,4,4,2,2,2],G:[3,2,0,0,0,3],Gm:[3,5,5,3,3,3],
-  G#:[4,6,6,5,4,4],G#m:[4,6,6,4,4,4],A:[-1,0,2,2,2,0],Am:[-1,0,2,2,1,0],
-  A#:[-1,1,3,3,3,1],A#m:[-1,1,3,3,2,1],B:[-1,2,4,4,4,2],Bm:[-1,2,4,4,3,2]
+const CHORD_QUALITIES: Record<string,{suffix:string;intervals:number[];guitar:number[];ukulele:number[]}> = {
+  "":{suffix:"",intervals:[0,4,7],guitar:[-1,3,2,0,1,0],ukulele:[0,0,0,3]},
+  m:{suffix:"m",intervals:[0,3,7],guitar:[-1,3,5,5,4,3],ukulele:[0,3,3,3]},
+  "7":{suffix:"7",intervals:[0,4,7,10],guitar:[-1,3,2,3,1,0],ukulele:[0,0,0,1]},
+  maj7:{suffix:"maj7",intervals:[0,4,7,11],guitar:[-1,3,2,0,0,0],ukulele:[0,0,0,2]},
+  m7:{suffix:"m7",intervals:[0,3,7,10],guitar:[-1,3,5,3,4,3],ukulele:[3,3,3,3]},
+  sus2:{suffix:"sus2",intervals:[0,2,7],guitar:[-1,3,0,0,1,0],ukulele:[0,2,3,3]},
+  sus4:{suffix:"sus4",intervals:[0,5,7],guitar:[-1,3,3,0,1,1],ukulele:[0,0,1,3]},
+  dim:{suffix:"dim",intervals:[0,3,6],guitar:[-1,3,4,5,4,-1],ukulele:[2,3,2,3]},
+  aug:{suffix:"aug",intervals:[0,4,8],guitar:[-1,3,2,1,1,0],ukulele:[1,0,0,3]},
+  add9:{suffix:"add9",intervals:[0,2,4,7],guitar:[-1,3,2,0,3,0],ukulele:[0,2,0,3]}
 };
-const UKULELE_FINGERINGS: Record<string,number[]> = {
-  C:[0,0,0,3],Cm:[0,3,3,3],C#:[1,1,1,4],C#m:[1,1,0,4],D:[2,2,2,0],Dm:[2,2,1,0],
-  D#:[3,3,3,1],D#m:[3,3,2,1],E:[4,4,4,2],Em:[0,4,3,2],F:[2,0,1,0],Fm:[1,0,1,3],
-  F#:[3,1,2,1],F#m:[2,1,2,0],G:[0,2,3,2],Gm:[0,2,3,1],G#:[1,3,4,3],G#m:[1,3,4,2],
-  A:[2,1,0,0],Am:[2,0,0,0],A#:[3,2,1,1],A#m:[3,1,1,1],B:[4,3,2,2],Bm:[4,2,2,2]
-};
+function parseChord(chord:string) {
+  const match=chord.match(/^([A-G](?:#|b)?)(.*)$/);
+  if(!match) return null;
+  const aliases:Record<string,string>={"min":"m","minor":"m","maj":"maj7","M7":"maj7","min7":"m7","-":"m"};
+  const raw=match[2] || "";
+  const quality=aliases[raw] ?? raw;
+  return {root:match[1],quality:CHORD_QUALITIES[quality] ? quality : ""};
+}
+function getFingering(chord:string,instrument:string) {
+  const parsed=parseChord(chord); if(!parsed) return null;
+  const quality=CHORD_QUALITIES[parsed.quality];
+  const shift=noteIndex(parsed.root);
+  const base=instrument==="Ukulele"?quality.ukulele:quality.guitar;
+  if(instrument==="Bass") return null;
+  return base.map(f=>f<0?f:f+shift);
+}
 function ChordDiagram({ chord, instrument }: { chord: string; instrument: string }) {
-  const root = chord.match(/^[A-G](?:#|b)?/)?.[0] || chord;
-  const fingeringMap = instrument === "Ukulele" ? UKULELE_FINGERINGS : GUITAR_FINGERINGS;
-  const fingers = fingeringMap[chord] || fingeringMap[root];
+  const parsed = parseChord(chord);
+  const root = parsed?.root || chord.match(/^[A-G](?:#|b)?/)?.[0] || chord;
+  const fingers = (instrument === "Guitar" || instrument === "Ukulele") ? getFingering(chord,instrument) : null;
   if (instrument === "Keyboard") {
-    const notes: Record<string,string[]> = {C:["C","E","G"],D:["D","F#","A"],E:["E","G#","B"],G:["G","B","D"],A:["A","C#","E"],Am:["A","C","E"],Em:["E","G","B"],F:["F","A","C"]};
-    return <div className="keyboard-diagram">{Array.from({length:14},(_,i)=>{const note=["C","D","E","F","G","A","B"][i%7]; const active=(notes[root]||[]).includes(note); return <span className={active?"key active":"key"} key={i}>{active?note:""}</span>;})}</div>;
+    const parsed=parseChord(chord); const intervals=parsed?CHORD_QUALITIES[parsed.quality].intervals:[0,4,7]; const rootIndex=noteIndex(root); const activeNotes=intervals.map(n=>NOTES[(rootIndex+n)%12]);
+    return <div className="keyboard-diagram">{Array.from({length:14},(_,i)=>{const note=["C","D","E","F","G","A","B"][i%7]; const active=activeNotes.some(n=>n.startsWith(note)); return <span className={active?"key active":"key"} key={i}>{active?note:""}</span>;})}</div>;
   }
-  if (instrument === "Bass") return <div className="bass-diagram"><b>{root}</b><span>Root note · {root} scale position</span></div>;
+  if (instrument === "Bass") { const parsed=parseChord(chord); const intervals=parsed?CHORD_QUALITIES[parsed.quality].intervals:[0,4,7]; return <div className="bass-diagram"><b>{root}</b><span>Chord tones: {intervals.map(n=>NOTES[(noteIndex(root)+n)%12]).join(" · ")}</span></div>; }
   if (!fingers) return <div className="diagram-empty">Diagram coming soon</div>;
   const strings = fingers.length, frets = 4, width = strings === 4 ? 88 : 112;
   const positiveFrets = fingers.filter(f => f > 0);
@@ -91,7 +105,7 @@ export default function Home() {
   const shapes = SHAPES[instrument];
   useEffect(() => { try { const draft = localStorage.getItem("worship-companion-draft"); if (draft) { const d = JSON.parse(draft); setTitle(d.title || "My worship song"); setArtist(d.artist || ""); setKey(d.key || "G"); setLyrics(d.lyrics || ""); setLearningMode(d.learningMode || "beginner"); setChordDisplay(d.chordDisplay || "names"); setSaved(true); } } catch {} }, []);
   function saveDraft() { try { localStorage.setItem("worship-companion-draft", JSON.stringify({title,artist,key,lyrics,learningMode,chordDisplay})); setSaved(true); setMessage("Saved on this device. Your song sheet will be here when you return using this browser."); } catch { setMessage("Could not save in this browser. Check your browser storage settings."); } }
-  function displayChord(chord: string) { if (chordDisplay === "names") return chord; const root = chord.match(/^[A-G](?:#|b)?/)?.[0] || chord; const interval = (noteIndex(root) - noteIndex(currentKey) + 12) % 12; const degrees: Record<number,string> = {0:"1",2:"2",4:"3",5:"4",7:"5",9:"6",11:"7"}; const degree = degrees[interval]; if (!degree) return chord; const quality = /dim/.test(chord) ? "dim" : /m(?!aj)/.test(chord) ? "m" : ""; return degree + quality; }
+  function displayChord(chord: string) { if (chordDisplay === "names") return chord; const root = parseChord(chord)?.root || chord.match(/^[A-G](?:#|b)?/)?.[0] || chord; const interval = (noteIndex(root) - noteIndex(currentKey) + 12) % 12; const degrees: Record<number,string> = {0:"1",2:"2",4:"3",5:"4",7:"5",9:"6",11:"7"}; const degree = degrees[interval]; if (!degree) return chord; const quality = /dim/.test(chord) ? "dim" : /m(?!aj)/.test(chord) ? "m" : ""; return degree + quality; }
 
   function addLink() {
     if (!url.trim()) { setMessage("Paste a YouTube or Spotify URL first."); return; }
