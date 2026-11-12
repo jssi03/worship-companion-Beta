@@ -18,7 +18,14 @@ const CHORD_QUALITIES: Record<string,{suffix:string;intervals:number[];guitar:nu
   sus4:{suffix:"sus4",intervals:[0,5,7],guitar:[-1,3,3,0,1,1],ukulele:[0,0,1,3]},
   dim:{suffix:"dim",intervals:[0,3,6],guitar:[-1,3,4,5,4,-1],ukulele:[2,3,2,3]},
   aug:{suffix:"aug",intervals:[0,4,8],guitar:[-1,3,2,1,1,0],ukulele:[1,0,0,3]},
-  add9:{suffix:"add9",intervals:[0,2,4,7],guitar:[-1,3,2,0,3,0],ukulele:[0,2,0,3]}
+  add9:{suffix:"add9",intervals:[0,2,4,7],guitar:[-1,3,2,0,3,0],ukulele:[0,2,0,3]},
+  "6":{suffix:"6",intervals:[0,4,7,9],guitar:[-1,0,2,2,2,2],ukulele:[2,1,0,0]},
+  "9":{suffix:"9",intervals:[0,4,7,10,14],guitar:[-1,3,2,3,3,3],ukulele:[0,2,1,1]},
+  m6:{suffix:"m6",intervals:[0,3,7,9],guitar:[-1,0,2,2,1,2],ukulele:[2,0,0,0]},
+  m9:{suffix:"m9",intervals:[0,3,7,10,14],guitar:[-1,3,1,3,3,3],ukulele:[3,1,3,1]},
+  m7b5:{suffix:"m7b5",intervals:[0,3,6,10],guitar:[-1,1,2,1,2,0],ukulele:[3,4,3,4]},
+  "5":{suffix:"5",intervals:[0,7],guitar:[-1,3,5,5,-1,-1],ukulele:[0,0,3,3]},
+  sus:{suffix:"sus",intervals:[0,5,7],guitar:[-1,3,3,0,1,1],ukulele:[0,0,1,3]}
 };
 function parseChord(chord:string) {
   const match=chord.match(/^([A-G](?:#|b)?)(.*)$/);
@@ -34,7 +41,7 @@ type DbFile = {chords:Record<string,DbEntry[]>};
 const GUITAR_DATA = guitarDb as DbFile;
 const UKULELE_DATA = ukuleleDb as DbFile;
 const ENHARMONIC:Record<string,string> = {"C#":"Db","D#":"Eb","F#":"Gb","G#":"Ab","A#":"Bb"};
-const QUALITY_SUFFIX:Record<string,string> = {"":"major",m:"minor",min:"minor",minor:"minor",dim:"dim",dim7:"dim7",aug:"aug",sus:"sus",sus2:"sus2",sus4:"sus4","7":"7",maj7:"maj7",m7:"m7",add9:"add9","6":"6","9":"9",m6:"m6",m9:"m9",m7b5:"m7b5", "7sus4":"7sus4"};
+const QUALITY_SUFFIX:Record<string,string> = {"":"major",m:"minor",min:"minor",minor:"minor",dim:"dim",dim7:"dim7",aug:"aug",sus:"sus",sus2:"sus2",sus4:"sus4","7":"7",maj7:"maj7",m7:"m7",add9:"add9","6":"6","9":"9",m6:"m6",m9:"m9",m7b5:"m7b5", "6":"6", "9":"9", m6:"m6", m9:"m9", "5":"5", "sus":"sus", "7sus4":"7sus4"};
 function findVoicings(chord:string,instrument:string):DbPosition[] {
   const parsed=parseChord(chord); if(!parsed) return [];
   const data=instrument==="Ukulele"?UKULELE_DATA:GUITAR_DATA;
