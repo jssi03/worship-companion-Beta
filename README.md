@@ -1,22 +1,32 @@
 # Worship Companion Beta
 
-A private church music-learning and worship-songbook platform.
+A church music-learning and worship-songbook platform.
 
-## Project structure
+## Structure
+- frontend: Next.js website
+- backend: FastAPI audio-analysis API
+- database/migrations: Supabase schema and access policies
+- docs: architecture and roadmap
 
-- `frontend/` — Next.js responsive web application (next milestone)
-- `backend/` — Python FastAPI audio-analysis service
-- `database/migrations/` — Supabase/PostgreSQL schema
-- `docs/` — architecture and implementation notes
+## Local development
 
-## Product principles
+Frontend:
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-1. AI-generated music analysis is labelled as an estimate until reviewed.
-2. Shared church arrangements are never silently overwritten by personal edits.
-3. Users can maintain private and shared songbooks.
-4. Audio is processed only when the user has rights or permission to upload it.
-5. Streaming links are playback/metadata references; they do not grant raw audio access.
+Backend:
+```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
+```
 
-## Development status
+## Current limitations
+The current audio analysis is a baseline librosa chroma/template estimator for major/minor triads. It is experimental, not reliable full-song transcription. Musician review is required. YouTube/Spotify links are references and do not provide raw audio for analysis. Use only audio you are authorised to process.
 
-Initial project architecture scaffold. Production chord recognition, lyrics transcription, authentication and deployment are not yet implemented.
+Never commit secrets or .env files.
