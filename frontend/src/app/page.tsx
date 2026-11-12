@@ -2,6 +2,9 @@
 
 import { useMemo, useState } from "react";
 
+type ChordEvent = { start_seconds: number; end_seconds: number; chord: string; confidence: number; review_status: string };
+type AnalysisResult = { duration_seconds: number; key: { name: string; mode: string; confidence: number }; tempo_bpm: number; chord_events: ChordEvent[]; limitations: string[] };
+
 const NOTES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
 const SONGS = [
   { title: "Morning Mercy", artist: "Worship Companion Demo", key: "G" },
@@ -39,6 +42,9 @@ export default function Home() {
   const [instrument, setInstrument] = useState("Guitar");
   const [url, setUrl] = useState("");
   const [audioName, setAudioName] = useState("");
+  const [audioFile, setAudioFile] = useState<File | null>(null);
+  const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
+  const [analysing, setAnalysing] = useState(false);
   const [message, setMessage] = useState("Workspace ready. Add a song link, upload authorised audio, or edit a chart.");
   const [lyrics, setLyrics] = useState("[Verse 1]\n[G]Your love is here in the [D]morning light\n[Em]You guide my steps and [C]make them right\n\n[Chorus]\n[G]I will sing with all my [D]heart\n[Em]You have been with me from the [C]start");
   const chords = useMemo(() => getChords(lyrics), [lyrics]);
@@ -59,8 +65,32 @@ export default function Home() {
   function addAudio(file?: File) {
     if (!file) return;
     if (!file.type.startsWith("audio/")) { setMessage("Please select an audio file."); return; }
+    setAudioFile(file);
     setAudioName(file.name);
-    setMessage("Audio selected locally. It has not been uploaded; authenticated server-side analysis is not connected yet.");
+    setAnalysis(null);
+    setMessage("Audio selected. Press Analyse audio to send it to your configured API.");
+  }
+
+  async function analyseAudio() {
+    if (!audioFile) { setMessage("Choose an audio file first."); return; }
+    setAnalysing(true);
+    setMessage("Uploading audio and analysing…");
+    try {
+      const body = new FormData();
+      body.append("file", audioFile);
+      const apiBase = (process.env.NEXT_PUBLIC_ANALYSIS_API_URL || "http://localhost:8000").replace(/\\/$/, "");
+      const response = await fetch(apiBase + "/v1/audio/analyse", { method: "POST", body });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.detail || "Analysis request failed.");
+      setAnalysis(payload as AnalysisResult);
+      if (payload.key?.name) setKey(payload.key.name);
+      setShift(0);
+      setMessage("Audio analysis complete. Review every suggested chord before using it in a church arrangement.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not reach the audio analysis server. Check its URL and status.");
+    } finally {
+      setAnalysing(false);
+    }
   }
   function openSong(song: typeof SONGS[number]) {
     setTitle(song.title); setArtist(song.artist); setKey(song.key); setShift(0);
@@ -86,7 +116,7 @@ export default function Home() {
           <div className="import-heading"><div><span className="step">01</span><div><h2>Bring a song into the lab</h2><p>Paste a link for reference, or select audio you have permission to use.</p></div></div><span className="soft-tag">SONG IMPORT</span></div>
           <div className="import-grid">
             <div><label className="field-label" htmlFor="song-url">YOUTUBE / SPOTIFY LINK</label><div className="input-action"><input id="song-url" value={url} onChange={e => setUrl(e.target.value)} placeholder="Paste a song URL..." /><button onClick={addLink}>Add link ↗</button></div></div>
-            <div><label className="field-label" htmlFor="audio-file">AUTHORISED AUDIO UPLOAD</label><div className="filebox"><input id="audio-file" type="file" accept="audio/*" onChange={e => addAudio(e.target.files?.[0])} /><span>{audioName || "Choose audio · MP3, WAV, M4A"}</span></div></div>
+            <div><label className="field-label" htmlFor="audio-file">AUTHORISED AUDIO UPLOAD</label><div className="filebox"><input id="audio-file" type="file" accept="audio/*" onChange={e => addAudio(e.target.files?.[0])} /><span>{audioName || "Choose audio · MP3, WAV, M4A"}</span></div>{audioFile && <button className="analyse-button" onClick={analyseAudio} disabled={analysing}>{analysing ? "Analysing…" : "Analyse audio ↗"}</button>}</div>
           </div>
           <p className="status">{message}</p>
         </section>
@@ -98,8 +128,9 @@ export default function Home() {
           </section>
           <section className="song-card">
             <div className="song-heading"><div><span className="eyebrow">02 / SONG WORKSPACE</span><h2>{title}</h2><p>{artist || "Add artist"} · <span className="green">●</span> Sample arrangement</p></div><span className="soft-tag">DRAFT</span></div>
-            <div className="song-stats"><div><small>ORIGINAL KEY</small><b>{key} <i>Major / estimate</i></b></div><div><small>YOUR PLAYING KEY</small><b className="green">{currentKey}</b></div><div><small>TEMPO</small><b>— <i>Not analysed</i></b></div></div>
+            <div className="song-stats"><div><small>DETECTED KEY</small><b>{analysis ? analysis.key.name : key} <i>{analysis ? analysis.key.mode + " / estimate" : "Not analysed"}</i></b></div><div><small>YOUR PLAYING KEY</small><b className="green">{currentKey}</b></div><div><small>TEMPO</small><b>{analysis ? Math.round(analysis.tempo_bpm) + " BPM" : "—"} <i>{analysis ? "estimate" : "Not analysed"}</i></b></div></div>
             <div className="transpose"><div><span className="eyebrow">TRANSPOSITION</span><b>Make it comfortable to play</b></div><div className="transpose-tools"><button onClick={() => setShift(v => v - 1)}>−</button><span>{shift > 0 ? "+" : ""}{shift}<small>SEMITONES</small></span><button onClick={() => setShift(v => v + 1)}>＋</button><button className="reset" onClick={() => setShift(0)}>Reset</button></div></div>
+            {analysis && <section className="analysis-results"><div className="section-heading"><div><span className="eyebrow">AUDIO ANALYSIS · EXPERIMENTAL</span><h3>Estimated chord timeline</h3></div><span className="soft-tag">{analysis.chord_events.length} EVENTS</span></div><p className="muted">Key confidence: {Math.round(analysis.key.confidence * 100)}% · Audio duration: {Math.round(analysis.duration_seconds)} seconds. Confidence is a heuristic, not a guaranteed accuracy score.</p><div className="timeline">{analysis.chord_events.map((event, index) => <div className="timeline-event" key={index}><span>{Math.floor(event.start_seconds / 60)}:{String(Math.floor(event.start_seconds % 60)).padStart(2, "0")}</span><b>{transposeChord(event.chord, shift)}</b><div className="confidence-track"><i style={{width: Math.round(event.confidence * 100) + "%"}} /></div><small>{Math.round(event.confidence * 100)}%</small></div>)}</div><ul className="limitations">{analysis.limitations.map(item => <li key={item}>{item}</li>)}</ul></section>}
             <div className="instrument-area"><div className="section-heading"><div><span className="eyebrow">03 / INSTRUMENT VIEW</span><h3>How do you play?</h3></div><span className="soft-tag">CHORD REFERENCE</span></div>
               <div className="instrument-tabs">{["Guitar","Ukulele","Bass","Keyboard"].map(name => <button key={name} className={instrument === name ? "instrument-tab active" : "instrument-tab"} onClick={() => setInstrument(name)}>{name === "Guitar" ? "🎸" : name === "Ukulele" ? "🪕" : name === "Bass" ? "𝄢" : "🎹"} {name}</button>)}</div>
               <div className="chord-grid">{transposedChords.length ? transposedChords.map((chord, i) => {const root = chord.match(/^[A-G](?:#|b)?/)?.[0] || chord; return <div className="chord-box" key={chord+i}><b>{chord}</b><small>{shapes[chord] || shapes[root] || "Voicing reference to be added"}</small></div>;}) : <p className="muted">Add chord tags such as [G], [D], [Em] in the lyrics editor.</p>}</div>
