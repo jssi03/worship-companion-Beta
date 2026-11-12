@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import guitarDb from "../data/guitar-chords.json";
+import ukuleleDb from "../data/ukulele-chords.json";
 
 type ChordEvent = { start_seconds: number; end_seconds: number; chord: string; confidence: number; review_status: string };
 type AnalysisResult = { duration_seconds: number; key: { name: string; mode: string; confidence: number }; tempo_bpm: number; chord_events: ChordEvent[]; limitations: string[] };
@@ -26,18 +28,49 @@ function parseChord(chord:string) {
   const quality=aliases[raw] ?? raw;
   return {root:match[1],quality:CHORD_QUALITIES[quality] ? quality : ""};
 }
+type DbPosition = {frets:number[]; fingers:number[]; baseFret:number; barres?:number[]};
+type DbEntry = {key:string;suffix:string;positions:DbPosition[]};
+type DbFile = {chords:Record<string,DbEntry[]>};
+const GUITAR_DATA = guitarDb as DbFile;
+const UKULELE_DATA = ukuleleDb as DbFile;
+const ENHARMONIC:Record<string,string> = {"C#":"Db","D#":"Eb","F#":"Gb","G#":"Ab","A#":"Bb"};
+const QUALITY_SUFFIX:Record<string,string> = {"":"major",m:"minor",min:"minor",minor:"minor",dim:"dim",dim7:"dim7",aug:"aug",sus:"sus",sus2:"sus2",sus4:"sus4","7":"7",maj7:"maj7",m7:"m7",add9:"add9","6":"6","9":"9",m6:"m6",m9:"m9",m7b5:"m7b5", "7sus4":"7sus4"};
+function findVoicings(chord:string,instrument:string):DbPosition[] {
+  const parsed=parseChord(chord); if(!parsed) return [];
+  const data=instrument==="Ukulele"?UKULELE_DATA:GUITAR_DATA;
+  const root= data.chords[parsed.root] ? parsed.root : (ENHARMONIC[parsed.root] || parsed.root);
+  const suffix=QUALITY_SUFFIX[parsed.quality];
+  if(!suffix) return [];
+  const entry=(data.chords[root]||[]).find(item=>item.suffix===suffix);
+  return entry?.positions || [];
+}
 function ChordDiagram({ chord, instrument }: { chord: string; instrument: string }) {
-  const parsed = parseChord(chord);
-  const root = parsed?.root || chord.match(/^[A-G](?:#|b)?/)?.[0] || chord;
-  const intervals = parsed ? CHORD_QUALITIES[parsed.quality].intervals : [0,4,7];
-  if (instrument === "Keyboard") {
-    const activeNotes = intervals.map(n => NOTES[(noteIndex(root)+n)%12]);
-    return <div className="keyboard-diagram">{Array.from({length:14},(_,i)=>{const note=["C","D","E","F","G","A","B"][i%7]; const active=activeNotes.some(n=>n.startsWith(note)); return <span className={active?"key active":"key"} key={i}>{active?note:""}</span>;})}</div>;
+  const [choice,setChoice]=useState(0);
+  const parsed=parseChord(chord);
+  const root=parsed?.root || chord;
+  const intervals=parsed?CHORD_QUALITIES[parsed.quality].intervals:[0,4,7];
+  if(instrument==="Keyboard"){
+    const activeNotes=intervals.map(n=>NOTES[(noteIndex(root)+n)%12]);
+    return <div className="keyboard-diagram">{Array.from({length:14},(_,i)=>{const note=["C","D","E","F","G","A","B"][i%7];const active=activeNotes.some(n=>n.startsWith(note));return <span className={active?"key active":"key"} key={i}>{active?note:""}</span>;})}</div>;
   }
-  if (instrument === "Bass") {
-    return <div className="bass-diagram"><b>{root}</b><span>Chord tones: {intervals.map(n=>NOTES[(noteIndex(root)+n)%12]).join(" · ")}</span></div>;
-  }
-  return <div className="diagram-empty">Verified {instrument.toLowerCase()} voicing not loaded yet</div>;
+  if(instrument==="Bass") return <div className="bass-diagram"><b>{root}</b><span>Chord tones: {intervals.map(n=>NOTES[(noteIndex(root)+n)%12]).join(" · ")}</span></div>;
+  const voicings=findVoicings(chord,instrument);
+  if(!voicings.length) return <div className="diagram-empty">No verified {instrument.toLowerCase()} voicing in the current library</div>;
+  const position=voicings[Math.min(choice,voicings.length-1)];
+  const frets=position.frets;
+  const strings=frets.length;
+  const width=strings===4?88:112;
+  const maxFret=Math.max(4,...frets.filter(f=>f>0));
+  const visibleFrets=4;
+  return <div className="verified-voicing">
+    <svg className="fret-diagram" viewBox={`0 0 ${width} 116`} role="img" aria-label={`${chord} ${instrument} voicing ${choice+1}`}>
+      {Array.from({length:strings},(_,i)=><line key={"s"+i} x1={12+i*(width-24)/(strings-1)} y1="18" x2={12+i*(width-24)/(strings-1)} y2="102" stroke="#8390a0" strokeWidth="1.2"/>)}
+      {Array.from({length:visibleFrets+1},(_,i)=><line key={"f"+i} x1="12" y1={18+i*21} x2={width-12} y2={18+i*21} stroke="#8390a0" strokeWidth={i===0&&position.baseFret===1?2.5:1}/>)}
+      {position.baseFret>1&&<text x="1" y="31" fill="#c5f477" fontSize="8">{position.baseFret}fr</text>}
+      {frets.map((f,i)=>{const x=12+i*(width-24)/(strings-1);if(f<0)return <text key={i} x={x} y="11" textAnchor="middle" fill="#f0a0a0" fontSize="10">×</text>;if(f===0)return <text key={i} x={x} y="11" textAnchor="middle" fill="#c5f477" fontSize="10">○</text>;return <g key={i}><circle cx={x} cy={18+(f-.5)*21} r="5.5" fill="#c5f477"/>{position.fingers[i]>0&&<text x={x} y={21+(f-.5)*21} textAnchor="middle" fontSize="6" fill="#14200c">{position.fingers[i]}</text>}</g>;})}
+    </svg>
+    <div className="voicing-controls"><button type="button" disabled={choice===0} onClick={()=>setChoice(v=>v-1)}>‹</button><span>Shape {choice+1} of {voicings.length}</span><button type="button" disabled={choice===voicings.length-1} onClick={()=>setChoice(v=>v+1)}>›</button></div>
+  </div>;
 }
 const SONGS = [
   { title: "Morning Mercy", artist: "Worship Companion Demo", key: "G" },
