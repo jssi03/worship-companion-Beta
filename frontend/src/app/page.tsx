@@ -138,15 +138,15 @@ export default function Home() {
     if (!url.trim()) { setMessage("Paste a YouTube or Spotify URL first."); return; }
     try {
       const parsed = new URL(url.trim());
-      const host = parsed.hostname.replace(/^www\\./,"").toLowerCase();
+      const host = parsed.hostname.toLowerCase().startsWith("www.") ? parsed.hostname.toLowerCase().slice(4) : parsed.hostname.toLowerCase();
       if (host === "youtube.com" || host === "m.youtube.com" || host === "youtu.be" || host === "music.youtube.com") {
-        const id = host === "youtu.be" ? parsed.pathname.split("/").filter(Boolean)[0] : parsed.searchParams.get("v") || parsed.pathname.match(/^\\/(?:shorts|embed|live)\\/([^/?]+)/)?.[1];
+        const pathParts = parsed.pathname.split("/").filter(Boolean); const id = host === "youtu.be" ? pathParts[0] : parsed.searchParams.get("v") || (["shorts","embed","live"].includes(pathParts[0]) ? pathParts[1] : undefined);
         if (!id || !/^[A-Za-z0-9_-]{11}$/.test(id)) { setMessage("That YouTube link doesn't contain a valid video ID."); return; }
         setYoutubeVideoId(id);
         setYoutubeMetadata(null);
         setMessage("Checking public YouTube metadata…");
         try {
-          const base=(process.env.NEXT_PUBLIC_ANALYSIS_API_URL || "http://localhost:8000").replace(/\\/$/,"");
+          const rawBase=process.env.NEXT_PUBLIC_ANALYSIS_API_URL || "http://localhost:8000"; const base=rawBase.endsWith("/") ? rawBase.slice(0,-1) : rawBase;
           const response=await fetch(base+"/v1/sources/youtube/inspect?url="+encodeURIComponent(url.trim()));
           const payload=await response.json();
           if(!response.ok) throw new Error(payload.detail || "Could not inspect this video.");
