@@ -26,13 +26,11 @@ function parseChord(chord:string) {
   const quality=aliases[raw] ?? raw;
   return {root:match[1],quality:CHORD_QUALITIES[quality] ? quality : ""};
 }
-function getFingering(chord:string,instrument:string) {
-  const parsed=parseChord(chord); if(!parsed) return null;
-  const quality=CHORD_QUALITIES[parsed.quality];
-  const shift=noteIndex(parsed.root);
-  const base=instrument==="Ukulele"?quality.ukulele:quality.guitar;
-  if(instrument==="Bass") return null;
-  return base.map(f=>f<0?f:f+shift);
+function getFingering(_chord:string,_instrument:string) {
+  // Do not generate/transposes fret positions mathematically: chord shapes require
+  // curated, instrument-specific voicing data. Until that dataset is integrated,
+  // render an explicit unavailable state rather than a potentially wrong diagram.
+  return null;
 }
 function ChordDiagram({ chord, instrument }: { chord: string; instrument: string }) {
   const parsed = parseChord(chord);
@@ -43,7 +41,7 @@ function ChordDiagram({ chord, instrument }: { chord: string; instrument: string
     return <div className="keyboard-diagram">{Array.from({length:14},(_,i)=>{const note=["C","D","E","F","G","A","B"][i%7]; const active=activeNotes.some(n=>n.startsWith(note)); return <span className={active?"key active":"key"} key={i}>{active?note:""}</span>;})}</div>;
   }
   if (instrument === "Bass") { const parsed=parseChord(chord); const intervals=parsed?CHORD_QUALITIES[parsed.quality].intervals:[0,4,7]; return <div className="bass-diagram"><b>{root}</b><span>Chord tones: {intervals.map(n=>NOTES[(noteIndex(root)+n)%12]).join(" · ")}</span></div>; }
-  if (!fingers) return <div className="diagram-empty">Diagram coming soon</div>;
+  if (!fingers) return <div className="diagram-empty">Verified {instrument.toLowerCase()} voicing not loaded yet</div>;
   const strings = fingers.length, frets = 4, width = strings === 4 ? 88 : 112;
   const positiveFrets = fingers.filter(f => f > 0);
   const firstFret = positiveFrets.length && Math.min(...positiveFrets) > 1 ? Math.min(...positiveFrets) : 1;
