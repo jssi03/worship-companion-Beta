@@ -182,8 +182,6 @@ export default function Home() {
     setAnalysing(true);
     setMessage("Uploading audio and analysing…");
     try {
-      const body = new FormData();
-      body.append("file", audioFile);
       const apiBaseRaw = process.env.NEXT_PUBLIC_ANALYSIS_API_URL || "http://localhost:8000";
       const apiBase = apiBaseRaw.endsWith("/") ? apiBaseRaw.slice(0, -1) : apiBaseRaw;
       const analysisBody = new FormData(); analysisBody.append("file", audioFile);
