@@ -1,11 +1,30 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type ChordEvent = { start_seconds: number; end_seconds: number; chord: string; confidence: number; review_status: string };
 type AnalysisResult = { duration_seconds: number; key: { name: string; mode: string; confidence: number }; tempo_bpm: number; chord_events: ChordEvent[]; limitations: string[] };
 
 const NOTES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+const NASHVILLE: Record<string,string> = {C:"1",Dm:"2m",Em:"3m",F:"4",G:"5",Am:"6m",Bdim:"7dim"};
+const GUITAR_FINGERINGS: Record<string,number[]> = {C:[-1,3,2,0,1,0],D:[-1,-1,0,2,3,2],E:[0,2,2,1,0,0],G:[3,2,0,0,0,3],A:[-1,0,2,2,2,0],Am:[-1,0,2,2,1,0],Em:[0,2,2,0,0,0],F:[1,3,3,2,1,1]};
+const UKULELE_FINGERINGS: Record<string,number[]> = {C:[0,0,0,3],D:[2,2,2,0],E:[4,4,4,2],G:[0,2,3,2],A:[2,1,0,0],Am:[2,0,0,0],Em:[0,4,3,2],F:[2,0,1,0]};
+function ChordDiagram({ chord, instrument }: { chord: string; instrument: string }) {
+  const root = chord.match(/^[A-G](?:#|b)?/)?.[0] || chord;
+  const fingers = instrument === "Ukulele" ? UKULELE_FINGERINGS[root] : GUITAR_FINGERINGS[root];
+  if (instrument === "Keyboard") {
+    const notes: Record<string,string[]> = {C:["C","E","G"],D:["D","F#","A"],E:["E","G#","B"],G:["G","B","D"],A:["A","C#","E"],Am:["A","C","E"],Em:["E","G","B"],F:["F","A","C"]};
+    return <div className="keyboard-diagram">{Array.from({length:14},(_,i)=>{const note=["C","D","E","F","G","A","B"][i%7]; const active=(notes[root]||[]).includes(note); return <span className={active?"key active":"key"} key={i}>{active?note:""}</span>;})}</div>;
+  }
+  if (instrument === "Bass") return <div className="bass-diagram"><b>{root}</b><span>Root note · {root} scale position</span></div>;
+  if (!fingers) return <div className="diagram-empty">Diagram coming soon</div>;
+  const strings = fingers.length, frets = 4, width = strings === 4 ? 88 : 112;
+  return <svg className="fret-diagram" viewBox={`0 0 ${width} 112`} role="img" aria-label={`${chord} ${instrument} chord diagram`}>
+    {Array.from({length:strings},(_,i)=><line key={"s"+i} x1={12+i*(width-24)/(strings-1)} y1="16" x2={12+i*(width-24)/(strings-1)} y2="100" stroke="#8390a0" strokeWidth="1.2"/>)}
+    {Array.from({length:frets+1},(_,i)=><line key={"f"+i} x1="12" y1={16+i*21} x2={width-12} y2={16+i*21} stroke="#8390a0" strokeWidth={i===0?2.5:1}/>)}
+    {fingers.map((f,i)=>f<0?<text key={i} x={12+i*(width-24)/(strings-1)} y="10" textAnchor="middle" fill="#f0a0a0" fontSize="10">×</text>:f===0?<text key={i} x={12+i*(width-24)/(strings-1)} y="10" textAnchor="middle" fill="#c5f477" fontSize="10">○</text>:<circle key={i} cx={12+i*(width-24)/(strings-1)} cy={16+(f-.5)*21} r="5.5" fill="#c5f477"/>)}
+  </svg>;
+}
 const SONGS = [
   { title: "Morning Mercy", artist: "Worship Companion Demo", key: "G" },
   { title: "Build My Life", artist: "Housefires", key: "E" },
@@ -35,6 +54,9 @@ function getChords(text: string) {
 }
 export default function Home() {
   const [tab, setTab] = useState("shared");
+  const [learningMode, setLearningMode] = useState("beginner");
+  const [chordDisplay, setChordDisplay] = useState("names");
+  const [saved, setSaved] = useState(false);
   const [title, setTitle] = useState("My worship song");
   const [artist, setArtist] = useState("");
   const [key, setKey] = useState("G");
@@ -52,6 +74,9 @@ export default function Home() {
   const transposedLyrics = lyrics.replace(/\[([^\]]+)\]/g, (_, chord) => "[" + transposeChord(chord.trim(), shift) + "]");
   const transposedChords = chords.map(chord => transposeChord(chord, shift));
   const shapes = SHAPES[instrument];
+  useEffect(() => { try { const draft = localStorage.getItem("worship-companion-draft"); if (draft) { const d = JSON.parse(draft); setTitle(d.title || "My worship song"); setArtist(d.artist || ""); setKey(d.key || "G"); setLyrics(d.lyrics || ""); setLearningMode(d.learningMode || "beginner"); setChordDisplay(d.chordDisplay || "names"); setSaved(true); } } catch {} }, []);
+  function saveDraft() { try { localStorage.setItem("worship-companion-draft", JSON.stringify({title,artist,key,lyrics,learningMode,chordDisplay})); setSaved(true); setMessage("Saved on this device. Your song sheet will be here when you return using this browser."); } catch { setMessage("Could not save in this browser. Check your browser storage settings."); } }
+  function displayChord(chord: string) { if (chordDisplay === "names") return chord; const root = chord.match(/^[A-G](?:#|b)?/)?.[0] || chord; return NASHVILLE[root] || chord; }
 
   function addLink() {
     if (!url.trim()) { setMessage("Paste a YouTube or Spotify URL first."); return; }
@@ -131,15 +156,17 @@ export default function Home() {
             <p className="library-note">Sample entries only. Live private and shared songbooks will be connected to the church database.</p>
           </section>
           <section className="song-card">
-            <div className="song-heading"><div><span className="eyebrow">02 / SONG WORKSPACE</span><h2>{title}</h2><p>{artist || "Add artist"} · <span className="green">●</span> Sample arrangement</p></div><span className="soft-tag">DRAFT</span></div>
+            <div className="song-heading"><div><span className="eyebrow">02 / SONG WORKSPACE</span><h2>{title}</h2><p>{artist || "Add artist"} · <span className="green">●</span> Sample arrangement</p></div><span className="soft-tag">{saved ? "SAVED ON THIS DEVICE" : "DRAFT"}</span></div>
             <div className="song-stats"><div><small>DETECTED KEY</small><b>{analysis ? analysis.key.name : key} <i>{analysis ? analysis.key.mode + " / estimate" : "Not analysed"}</i></b></div><div><small>YOUR PLAYING KEY</small><b className="green">{currentKey}</b></div><div><small>TEMPO</small><b>{analysis ? Math.round(analysis.tempo_bpm) + " BPM" : "—"} <i>{analysis ? "estimate" : "Not analysed"}</i></b></div></div>
             <div className="transpose"><div><span className="eyebrow">TRANSPOSITION</span><b>Make it comfortable to play</b></div><div className="transpose-tools"><button onClick={() => setShift(v => v - 1)}>−</button><span>{shift > 0 ? "+" : ""}{shift}<small>SEMITONES</small></span><button onClick={() => setShift(v => v + 1)}>＋</button><button className="reset" onClick={() => setShift(0)}>Reset</button></div></div>
             {analysis && <section className="analysis-results"><div className="section-heading"><div><span className="eyebrow">AUDIO ANALYSIS · EXPERIMENTAL</span><h3>Estimated chord timeline</h3></div><span className="soft-tag">{analysis.chord_events.length} EVENTS</span></div><p className="muted">Key confidence: {Math.round(analysis.key.confidence * 100)}% · Audio duration: {Math.round(analysis.duration_seconds)} seconds. Confidence is a heuristic, not a guaranteed accuracy score.</p><div className="timeline">{analysis.chord_events.map((event, index) => <div className="timeline-event" key={index}><span>{Math.floor(event.start_seconds / 60)}:{String(Math.floor(event.start_seconds % 60)).padStart(2, "0")}</span><b>{transposeChord(event.chord, shift)}</b><div className="confidence-track"><i style={{width: Math.round(event.confidence * 100) + "%"}} /></div><small>{Math.round(event.confidence * 100)}%</small></div>)}</div><ul className="limitations">{analysis.limitations.map(item => <li key={item}>{item}</li>)}</ul></section>}
             <div className="instrument-area"><div className="section-heading"><div><span className="eyebrow">03 / INSTRUMENT VIEW</span><h3>How do you play?</h3></div><span className="soft-tag">CHORD REFERENCE</span></div>
+              <div className="mode-switch"><span className="eyebrow">LEARNING MODE</span><div><button className={learningMode==="beginner"?"mode-option active":"mode-option"} onClick={()=>setLearningMode("beginner")}>Beginner</button><button className={learningMode==="musician"?"mode-option active":"mode-option"} onClick={()=>setLearningMode("musician")}>Musician</button></div></div>
+              <div className="display-switch"><span className="eyebrow">CHORD DISPLAY</span><div><button className={chordDisplay==="names"?"mode-option active":"mode-option"} onClick={()=>setChordDisplay("names")}>Chord names</button><button className={chordDisplay==="numbers"?"mode-option active":"mode-option"} onClick={()=>setChordDisplay("numbers")}>Nashville numbers</button></div></div>
               <div className="instrument-tabs">{["Guitar","Ukulele","Bass","Keyboard"].map(name => <button key={name} className={instrument === name ? "instrument-tab active" : "instrument-tab"} onClick={() => setInstrument(name)}>{name === "Guitar" ? "🎸" : name === "Ukulele" ? "🪕" : name === "Bass" ? "𝄢" : "🎹"} {name}</button>)}</div>
-              <div className="chord-grid">{transposedChords.length ? transposedChords.map((chord, i) => {const root = chord.match(/^[A-G](?:#|b)?/)?.[0] || chord; return <div className="chord-box" key={chord+i}><b>{chord}</b><small>{shapes[chord] || shapes[root] || "Voicing reference to be added"}</small></div>;}) : <p className="muted">Add chord tags such as [G], [D], [Em] in the lyrics editor.</p>}</div>
+              <div className="chord-grid">{transposedChords.length ? transposedChords.map((chord, i) => <div className="chord-box" key={chord+i}><b>{displayChord(chord)}</b>{learningMode==="beginner" && <ChordDiagram chord={chord} instrument={instrument}/>}<small>{learningMode==="beginner" ? "Finger placement" : (shapes[chord] || shapes[chord.match(/^[A-G](?:#|b)?/)?.[0] || chord] || "Voicing reference to be added")}</small></div>) : <p className="muted">Add chord tags such as [G], [D], [Em] in the lyrics editor.</p>}</div>
             </div>
-            <div className="lyrics-area"><div className="section-heading"><div><span className="eyebrow">04 / SONG SHEET</span><h3>Lyrics & chords</h3></div><span className="soft-tag">EDITABLE</span></div><p className="muted">Place chord names in square brackets immediately before a lyric phrase.</p><textarea value={transposedLyrics} onChange={e => updateLyrics(e.target.value)} spellCheck={false} aria-label="Lyrics and chord editor" /><div className="sheet-foot"><span>{chords.length} chord labels · local preview only</span><button onClick={() => setMessage("Draft changes are in this browser session only. Account saving will arrive with authentication.")}>Save draft ↗</button></div></div>
+            <div className="lyrics-area"><div className="section-heading"><div><span className="eyebrow">04 / SONG SHEET</span><h3>Lyrics & chords</h3></div><span className="soft-tag">EDITABLE</span></div><p className="muted">Place chord names in square brackets immediately before a lyric phrase.</p><textarea value={transposedLyrics} onChange={e => updateLyrics(e.target.value)} spellCheck={false} aria-label="Lyrics and chord editor" /><div className="sheet-foot"><span>{chords.length} chord labels · local preview only</span><button onClick={saveDraft}>Save on this device ↗</button></div></div>
           </section>
         </div>
         <footer>WORSHIP COMPANION BETA <span>·</span> Built for musicians learning together.</footer>
