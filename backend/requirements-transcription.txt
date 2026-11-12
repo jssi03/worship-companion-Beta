@@ -1,0 +1,3 @@
+-r requirements.txt
+# Optional CPU-friendly speech-to-text engine for authorised audio uploads.
+faster-whisper>=1.1,<2.0
