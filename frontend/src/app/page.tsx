@@ -78,7 +78,8 @@ export default function Home() {
     try {
       const body = new FormData();
       body.append("file", audioFile);
-      const apiBase = (process.env.NEXT_PUBLIC_ANALYSIS_API_URL || "http://localhost:8000").replace(/\\/$/, "");
+      const apiBaseRaw = process.env.NEXT_PUBLIC_ANALYSIS_API_URL || "http://localhost:8000";
+      const apiBase = apiBaseRaw.endsWith("/") ? apiBaseRaw.slice(0, -1) : apiBaseRaw;
       const response = await fetch(apiBase + "/v1/audio/analyse", { method: "POST", body });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.detail || "Analysis request failed.");
@@ -91,6 +92,9 @@ export default function Home() {
     } finally {
       setAnalysing(false);
     }
+  }
+  function updateLyrics(value: string) {
+    setLyrics(value.replace(/\\[([^\\]]+)\\]/g, (_, chord) => "[" + transposeChord(chord.trim(), -shift) + "]"));
   }
   function openSong(song: typeof SONGS[number]) {
     setTitle(song.title); setArtist(song.artist); setKey(song.key); setShift(0);
@@ -135,7 +139,7 @@ export default function Home() {
               <div className="instrument-tabs">{["Guitar","Ukulele","Bass","Keyboard"].map(name => <button key={name} className={instrument === name ? "instrument-tab active" : "instrument-tab"} onClick={() => setInstrument(name)}>{name === "Guitar" ? "🎸" : name === "Ukulele" ? "🪕" : name === "Bass" ? "𝄢" : "🎹"} {name}</button>)}</div>
               <div className="chord-grid">{transposedChords.length ? transposedChords.map((chord, i) => {const root = chord.match(/^[A-G](?:#|b)?/)?.[0] || chord; return <div className="chord-box" key={chord+i}><b>{chord}</b><small>{shapes[chord] || shapes[root] || "Voicing reference to be added"}</small></div>;}) : <p className="muted">Add chord tags such as [G], [D], [Em] in the lyrics editor.</p>}</div>
             </div>
-            <div className="lyrics-area"><div className="section-heading"><div><span className="eyebrow">04 / SONG SHEET</span><h3>Lyrics & chords</h3></div><span className="soft-tag">EDITABLE</span></div><p className="muted">Place chord names in square brackets immediately before a lyric phrase.</p><textarea value={transposedLyrics} onChange={e => setLyrics(e.target.value)} spellCheck={false} aria-label="Lyrics and chord editor" /><div className="sheet-foot"><span>{chords.length} chord labels · local preview only</span><button onClick={() => setMessage("Draft changes are in this browser session only. Account saving will arrive with authentication.")}>Save draft ↗</button></div></div>
+            <div className="lyrics-area"><div className="section-heading"><div><span className="eyebrow">04 / SONG SHEET</span><h3>Lyrics & chords</h3></div><span className="soft-tag">EDITABLE</span></div><p className="muted">Place chord names in square brackets immediately before a lyric phrase.</p><textarea value={transposedLyrics} onChange={e => updateLyrics(e.target.value)} spellCheck={false} aria-label="Lyrics and chord editor" /><div className="sheet-foot"><span>{chords.length} chord labels · local preview only</span><button onClick={() => setMessage("Draft changes are in this browser session only. Account saving will arrive with authentication.")}>Save draft ↗</button></div></div>
           </section>
         </div>
         <footer>WORSHIP COMPANION BETA <span>·</span> Built for musicians learning together.</footer>
