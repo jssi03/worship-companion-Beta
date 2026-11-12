@@ -76,7 +76,7 @@ export default function Home() {
   const shapes = SHAPES[instrument];
   useEffect(() => { try { const draft = localStorage.getItem("worship-companion-draft"); if (draft) { const d = JSON.parse(draft); setTitle(d.title || "My worship song"); setArtist(d.artist || ""); setKey(d.key || "G"); setLyrics(d.lyrics || ""); setLearningMode(d.learningMode || "beginner"); setChordDisplay(d.chordDisplay || "names"); setSaved(true); } } catch {} }, []);
   function saveDraft() { try { localStorage.setItem("worship-companion-draft", JSON.stringify({title,artist,key,lyrics,learningMode,chordDisplay})); setSaved(true); setMessage("Saved on this device. Your song sheet will be here when you return using this browser."); } catch { setMessage("Could not save in this browser. Check your browser storage settings."); } }
-  function displayChord(chord: string) { if (chordDisplay === "names") return chord; const root = chord.match(/^[A-G](?:#|b)?/)?.[0] || chord; return NASHVILLE[root] || chord; }
+  function displayChord(chord: string) { if (chordDisplay === "names") return chord; const root = chord.match(/^[A-G](?:#|b)?/)?.[0] || chord; const interval = (noteIndex(root) - noteIndex(currentKey) + 12) % 12; const degrees: Record<number,string> = {0:"1",2:"2",4:"3",5:"4",7:"5",9:"6",11:"7"}; const degree = degrees[interval]; if (!degree) return chord; const quality = /dim/.test(chord) ? "dim" : /m(?!aj)/.test(chord) ? "m" : ""; return degree + quality; }
 
   function addLink() {
     if (!url.trim()) { setMessage("Paste a YouTube or Spotify URL first."); return; }
