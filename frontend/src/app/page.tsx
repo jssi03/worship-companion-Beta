@@ -26,31 +26,18 @@ function parseChord(chord:string) {
   const quality=aliases[raw] ?? raw;
   return {root:match[1],quality:CHORD_QUALITIES[quality] ? quality : ""};
 }
-function getFingering(_chord:string,_instrument:string) {
-  // Do not generate/transposes fret positions mathematically: chord shapes require
-  // curated, instrument-specific voicing data. Until that dataset is integrated,
-  // render an explicit unavailable state rather than a potentially wrong diagram.
-  return null;
-}
 function ChordDiagram({ chord, instrument }: { chord: string; instrument: string }) {
   const parsed = parseChord(chord);
   const root = parsed?.root || chord.match(/^[A-G](?:#|b)?/)?.[0] || chord;
-  const fingers = (instrument === "Guitar" || instrument === "Ukulele") ? getFingering(chord,instrument) : null;
+  const intervals = parsed ? CHORD_QUALITIES[parsed.quality].intervals : [0,4,7];
   if (instrument === "Keyboard") {
-    const parsed=parseChord(chord); const intervals=parsed?CHORD_QUALITIES[parsed.quality].intervals:[0,4,7]; const rootIndex=noteIndex(root); const activeNotes=intervals.map(n=>NOTES[(rootIndex+n)%12]);
+    const activeNotes = intervals.map(n => NOTES[(noteIndex(root)+n)%12]);
     return <div className="keyboard-diagram">{Array.from({length:14},(_,i)=>{const note=["C","D","E","F","G","A","B"][i%7]; const active=activeNotes.some(n=>n.startsWith(note)); return <span className={active?"key active":"key"} key={i}>{active?note:""}</span>;})}</div>;
   }
-  if (instrument === "Bass") { const parsed=parseChord(chord); const intervals=parsed?CHORD_QUALITIES[parsed.quality].intervals:[0,4,7]; return <div className="bass-diagram"><b>{root}</b><span>Chord tones: {intervals.map(n=>NOTES[(noteIndex(root)+n)%12]).join(" · ")}</span></div>; }
-  if (!fingers) return <div className="diagram-empty">Verified {instrument.toLowerCase()} voicing not loaded yet</div>;
-  const strings = fingers.length, frets = 4, width = strings === 4 ? 88 : 112;
-  const positiveFrets = fingers.filter(f => f > 0);
-  const firstFret = positiveFrets.length && Math.min(...positiveFrets) > 1 ? Math.min(...positiveFrets) : 1;
-  return <svg className="fret-diagram" viewBox={`0 0 ${width} 112`} role="img" aria-label={`${chord} ${instrument} chord diagram`}>
-    {Array.from({length:strings},(_,i)=><line key={"s"+i} x1={12+i*(width-24)/(strings-1)} y1="16" x2={12+i*(width-24)/(strings-1)} y2="100" stroke="#8390a0" strokeWidth="1.2"/>)}
-    {Array.from({length:frets+1},(_,i)=><line key={"f"+i} x1="12" y1={16+i*21} x2={width-12} y2={16+i*21} stroke="#8390a0" strokeWidth={i===0 && firstFret===1?2.5:1}/>)}
-    {firstFret>1 && <text x="2" y="29" fill="#c5f477" fontSize="8">{firstFret}fr</text>}
-    {fingers.map((f,i)=>f<0?<text key={i} x={12+i*(width-24)/(strings-1)} y="10" textAnchor="middle" fill="#f0a0a0" fontSize="10">×</text>:f===0?<text key={i} x={12+i*(width-24)/(strings-1)} y="10" textAnchor="middle" fill="#c5f477" fontSize="10">○</text>:<circle key={i} cx={12+i*(width-24)/(strings-1)} cy={16+(f-firstFret+.5)*21} r="5.5" fill="#c5f477"/>)}
-  </svg>;
+  if (instrument === "Bass") {
+    return <div className="bass-diagram"><b>{root}</b><span>Chord tones: {intervals.map(n=>NOTES[(noteIndex(root)+n)%12]).join(" · ")}</span></div>;
+  }
+  return <div className="diagram-empty">Verified {instrument.toLowerCase()} voicing not loaded yet</div>;
 }
 const SONGS = [
   { title: "Morning Mercy", artist: "Worship Companion Demo", key: "G" },
