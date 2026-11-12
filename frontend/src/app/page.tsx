@@ -116,6 +116,7 @@ export default function Home() {
   const [shift, setShift] = useState(0);
   const [instrument, setInstrument] = useState("Guitar");
   const [url, setUrl] = useState("");
+  const [youtubeVideoId, setYoutubeVideoId] = useState("");
   const [audioName, setAudioName] = useState("");
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
@@ -134,10 +135,21 @@ export default function Home() {
   function addLink() {
     if (!url.trim()) { setMessage("Paste a YouTube or Spotify URL first."); return; }
     try {
-      const host = new URL(url).hostname;
-      setMessage(["youtube.com","www.youtube.com","youtu.be","open.spotify.com"].includes(host)
-        ? "Link saved as a song reference. Streaming links do not provide raw audio for chord analysis."
-        : "Reference saved. YouTube and Spotify are the recognised providers.");
+      const parsed = new URL(url.trim());
+      const host = parsed.hostname.replace(/^www\\./,"").toLowerCase();
+      if (host === "youtube.com" || host === "m.youtube.com" || host === "youtu.be" || host === "music.youtube.com") {
+        const id = host === "youtu.be" ? parsed.pathname.split("/").filter(Boolean)[0] : parsed.searchParams.get("v") || parsed.pathname.match(/^\\/(?:shorts|embed|live)\\/([^/?]+)/)?.[1];
+        if (!id || !/^[A-Za-z0-9_-]{11}$/.test(id)) { setMessage("That YouTube link doesn't contain a valid video ID."); return; }
+        setYoutubeVideoId(id);
+        setMessage("YouTube player loaded. You can listen here while editing the song sheet. YouTube links do not expose audio or captions to automatic chord/lyric analysis.");
+        return;
+      }
+      if (host === "open.spotify.com") {
+        setYoutubeVideoId("");
+        setMessage("Spotify link saved as a reference. Open it in Spotify; automatic audio or lyric extraction is not available from the link.");
+        return;
+      }
+      setMessage("Please use a YouTube or Spotify link.");
     } catch { setMessage("Please enter a valid URL."); }
   }
   function addAudio(file?: File) {
@@ -200,7 +212,7 @@ export default function Home() {
             <div><label className="field-label" htmlFor="song-url">YOUTUBE / SPOTIFY LINK</label><div className="input-action"><input id="song-url" value={url} onChange={e => setUrl(e.target.value)} placeholder="Paste a song URL..." /><button onClick={addLink}>Add link ↗</button></div></div>
             <div><label className="field-label" htmlFor="audio-file">AUTHORISED AUDIO UPLOAD</label><div className="filebox"><input id="audio-file" type="file" accept="audio/*" onChange={e => addAudio(e.target.files?.[0])} /><span>{audioName || "Choose audio · MP3, WAV, M4A"}</span></div>{audioFile && <button className="analyse-button" onClick={analyseAudio} disabled={analysing}>{analysing ? "Analysing…" : "Analyse audio ↗"}</button>}</div>
           </div>
-          <p className="status">{message}</p>
+          {youtubeVideoId && <div className="youtube-player-wrap"><div className="youtube-player-heading"><b>YouTube listening player</b><button type="button" onClick={()=>setYoutubeVideoId("")}>Remove video</button></div><div className="youtube-player"><iframe src={`https://www.youtube-nocookie.com/embed/${youtubeVideoId}`} title="YouTube song reference" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerPolicy="strict-origin-when-cross-origin" allowFullScreen /></div><p className="muted">Listen to the reference here. Add or paste authorised lyrics in the editable song sheet below; automatic caption extraction is not enabled.</p></div>}<p className="status">{message}</p>
         </section>
         <div className="workspace-grid">
           <section className="library-card"><div className="card-heading"><div><span className="eyebrow">YOUR LIBRARY</span><h2>{tab === "shared" ? "Church songs" : "My practice songs"}</h2></div><span className="soft-tag">03</span></div>
