@@ -94,7 +94,7 @@ export default function Home() {
     }
   }
   function updateLyrics(value: string) {
-    setLyrics(value.replace(/\\[([^\\]]+)\\]/g, (_, chord) => "[" + transposeChord(chord.trim(), -shift) + "]"));
+    setLyrics(value.replace(/\[([^\]]+)\]/g, (_, chord) => "[" + transposeChord(chord.trim(), -shift) + "]"));
   }
   function openSong(song: typeof SONGS[number]) {
     setTitle(song.title); setArtist(song.artist); setKey(song.key); setShift(0);
