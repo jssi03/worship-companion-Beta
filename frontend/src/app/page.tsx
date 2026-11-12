@@ -60,7 +60,6 @@ function ChordDiagram({ chord, instrument }: { chord: string; instrument: string
   const frets=position.frets;
   const strings=frets.length;
   const width=strings===4?88:112;
-  const maxFret=Math.max(4,...frets.filter(f=>f>0));
   const visibleFrets=4;
   return <div className="verified-voicing">
     <svg className="fret-diagram" viewBox={`0 0 ${width} 116`} role="img" aria-label={`${chord} ${instrument} voicing ${choice+1}`}>
