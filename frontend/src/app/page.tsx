@@ -117,6 +117,8 @@ export default function Home() {
   const [instrument, setInstrument] = useState("Guitar");
   const [url, setUrl] = useState("");
   const [youtubeVideoId, setYoutubeVideoId] = useState("");
+  const [youtubeMetadata, setYoutubeMetadata] = useState<{title?:string;author_name?:string;caption_message?:string;audio_message?:string}|null>(null);
+  const [transcript, setTranscript] = useState<{language:string;transcript:string;limitations:string[]}|null>(null);
   const [audioName, setAudioName] = useState("");
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
@@ -132,7 +134,7 @@ export default function Home() {
   function saveDraft() { try { localStorage.setItem("worship-companion-draft", JSON.stringify({title,artist,key,lyrics,learningMode,chordDisplay})); setSaved(true); setMessage("Saved on this device. Your song sheet will be here when you return using this browser."); } catch { setMessage("Could not save in this browser. Check your browser storage settings."); } }
   function displayChord(chord: string) { if (chordDisplay === "names") return chord; const root = parseChord(chord)?.root || chord.match(/^[A-G](?:#|b)?/)?.[0] || chord; const interval = (noteIndex(root) - noteIndex(currentKey) + 12) % 12; const degrees: Record<number,string> = {0:"1",2:"2",4:"3",5:"4",7:"5",9:"6",11:"7"}; const degree = degrees[interval]; if (!degree) return chord; const quality = /dim/.test(chord) ? "dim" : /m(?!aj)/.test(chord) ? "m" : ""; return degree + quality; }
 
-  function addLink() {
+  async function addLink() {
     if (!url.trim()) { setMessage("Paste a YouTube or Spotify URL first."); return; }
     try {
       const parsed = new URL(url.trim());
@@ -141,12 +143,26 @@ export default function Home() {
         const id = host === "youtu.be" ? parsed.pathname.split("/").filter(Boolean)[0] : parsed.searchParams.get("v") || parsed.pathname.match(/^\\/(?:shorts|embed|live)\\/([^/?]+)/)?.[1];
         if (!id || !/^[A-Za-z0-9_-]{11}$/.test(id)) { setMessage("That YouTube link doesn't contain a valid video ID."); return; }
         setYoutubeVideoId(id);
-        setMessage("YouTube player loaded. You can listen here while editing the song sheet. YouTube links do not expose audio or captions to automatic chord/lyric analysis.");
+        setYoutubeMetadata(null);
+        setMessage("Checking public YouTube metadata…");
+        try {
+          const base=(process.env.NEXT_PUBLIC_ANALYSIS_API_URL || "http://localhost:8000").replace(/\\/$/,"");
+          const response=await fetch(base+"/v1/sources/youtube/inspect?url="+encodeURIComponent(url.trim()));
+          const payload=await response.json();
+          if(!response.ok) throw new Error(payload.detail || "Could not inspect this video.");
+          setYoutubeMetadata(payload);
+          if(payload.title) setTitle(payload.title);
+          if(payload.author_name) setArtist(payload.author_name);
+          setMessage("Video identified. Captions require channel-owner/editor permission; chord analysis requires authorised audio. You can still play the reference here.");
+        } catch(error) {
+          setMessage(error instanceof Error ? error.message : "Video loaded, but public metadata could not be retrieved. Check that the analysis backend is deployed.");
+        }
         return;
       }
       if (host === "open.spotify.com") {
         setYoutubeVideoId("");
-        setMessage("Spotify link saved as a reference. Open it in Spotify; automatic audio or lyric extraction is not available from the link.");
+        setYoutubeMetadata(null);
+        setMessage("Spotify link saved as a reference. Automatic audio or lyric extraction is not available from the link.");
         return;
       }
       setMessage("Please use a YouTube or Spotify link.");
@@ -170,13 +186,27 @@ export default function Home() {
       body.append("file", audioFile);
       const apiBaseRaw = process.env.NEXT_PUBLIC_ANALYSIS_API_URL || "http://localhost:8000";
       const apiBase = apiBaseRaw.endsWith("/") ? apiBaseRaw.slice(0, -1) : apiBaseRaw;
-      const response = await fetch(apiBase + "/v1/audio/analyse", { method: "POST", body });
-      const payload = await response.json();
-      if (!response.ok) throw new Error(payload.detail || "Analysis request failed.");
+      const analysisBody = new FormData(); analysisBody.append("file", audioFile);
+      const transcriptBody = new FormData(); transcriptBody.append("file", audioFile);
+      const [analysisResponse, transcriptResponse] = await Promise.all([
+        fetch(apiBase + "/v1/audio/analyse", { method: "POST", body: analysisBody }),
+        fetch(apiBase + "/v1/audio/transcribe", { method: "POST", body: transcriptBody })
+      ]);
+      const payload = await analysisResponse.json();
+      if (!analysisResponse.ok) throw new Error(payload.detail || "Analysis request failed.");
       setAnalysis(payload as AnalysisResult);
       if (payload.key?.name) setKey(payload.key.name);
+      if (transcriptResponse.ok) {
+        const words=await transcriptResponse.json();
+        setTranscript(words);
+        setLyrics(words.transcript || "");
+        setMessage("Audio analysed and draft lyrics transcribed. Check every sung word and chord before saving.");
+      } else {
+        const unavailable=await transcriptResponse.json();
+        setTranscript(null);
+        setMessage("Chord analysis complete. Automatic lyrics are not available yet: "+(unavailable.detail || "transcription service unavailable"));
+      }
       setShift(0);
-      setMessage("Audio analysis complete. Review every suggested chord before using it in a church arrangement.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not reach the audio analysis server. Check its URL and status.");
     } finally {
@@ -212,7 +242,7 @@ export default function Home() {
             <div><label className="field-label" htmlFor="song-url">YOUTUBE / SPOTIFY LINK</label><div className="input-action"><input id="song-url" value={url} onChange={e => setUrl(e.target.value)} placeholder="Paste a song URL..." /><button onClick={addLink}>Add link ↗</button></div></div>
             <div><label className="field-label" htmlFor="audio-file">AUTHORISED AUDIO UPLOAD</label><div className="filebox"><input id="audio-file" type="file" accept="audio/*" onChange={e => addAudio(e.target.files?.[0])} /><span>{audioName || "Choose audio · MP3, WAV, M4A"}</span></div>{audioFile && <button className="analyse-button" onClick={analyseAudio} disabled={analysing}>{analysing ? "Analysing…" : "Analyse audio ↗"}</button>}</div>
           </div>
-          {youtubeVideoId && <div className="youtube-player-wrap"><div className="youtube-player-heading"><b>YouTube listening player</b><button type="button" onClick={()=>setYoutubeVideoId("")}>Remove video</button></div><div className="youtube-player"><iframe src={`https://www.youtube-nocookie.com/embed/${youtubeVideoId}`} title="YouTube song reference" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerPolicy="strict-origin-when-cross-origin" allowFullScreen /></div><p className="muted">Listen to the reference here. Add or paste authorised lyrics in the editable song sheet below; automatic caption extraction is not enabled.</p></div>}<p className="status">{message}</p>
+          {youtubeVideoId && <div className="youtube-player-wrap"><div className="youtube-player-heading"><b>YouTube listening player</b><button type="button" onClick={()=>setYoutubeVideoId("")}>Remove video</button></div><div className="youtube-player"><iframe src={`https://www.youtube-nocookie.com/embed/${youtubeVideoId}`} title="YouTube song reference" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerPolicy="strict-origin-when-cross-origin" allowFullScreen /></div><p className="muted">Listen to the reference here. {youtubeMetadata?.title ? `Identified: ${youtubeMetadata.title} · ${youtubeMetadata.author_name || "Unknown channel"}. ` : ""}Caption access: {youtubeMetadata?.caption_message || "Requires authorised channel access."} Audio analysis: {youtubeMetadata?.audio_message || "Requires an authorised audio source."}</p></div>}{transcript && <div className="transcript-status"><b>Draft transcript · {transcript.language}</b><p>Speech recognition is a draft. Review sung words, repeated lines and Tamil-English phrases.</p>{transcript.limitations.map(item=><small key={item}>{item}</small>)}</div>}<p className="status">{message}</p>
         </section>
         <div className="workspace-grid">
           <section className="library-card"><div className="card-heading"><div><span className="eyebrow">YOUR LIBRARY</span><h2>{tab === "shared" ? "Church songs" : "My practice songs"}</h2></div><span className="soft-tag">03</span></div>
